@@ -5,9 +5,6 @@ by UNICORN Chromatography software supplied with ÄKTA Systems
 (c)2014-2016 - Yasar L. Ahmed
 v0.18b
 """
-
-from __future__ import print_function
-
 import codecs
 import io
 import os
@@ -306,17 +303,25 @@ class PcUni6(OrderedDict):
         self.file_name = inp_file
         self.inject_vol = 0.0
         self.run_name = 'blank'
+        self._date = None
+        self._loaded = False
 
-    def load_all_xml_from_zip(self):
-        self.load(show=False)
-        parse_keys = []
-        for key in fdata:
-            if ".Xml" in key:
-                parse_keys.append(key)
-        for key in parse_keys:
+    def load_all_xml(self):
+        if self._loaded is False:
+            self.load(show=False)
+        xml_keys_to_be_parsed = [key for key in self.keys() if (".Xml" in key and "dict" not in key)]
+        for key in xml_keys_to_be_parsed:
             self.xml_parse(key, show=False)
         self.clean_up()
-        return fdata
+
+    @property
+    def date(self):
+        if self._date is None:
+            root = ElementTree.fromstring(self["Result.xml"])
+            date = root.find(".//Created").text
+            self._date = date[:10]
+
+        return self._date
 
     def load(self, show=False):
         """
@@ -328,6 +333,7 @@ class PcUni6(OrderedDict):
         x = udata['Chrom.1_2_True']['CoordinateData.Volumes']
         y = udata['Chrom.1_2_True']['CoordinateData.Amplitudes']
         """
+        self._loaded = True
         with open(self.file_name, 'rb') as f:
             input_zip = ZipFile(f)
             zip_data = self.zip2dict(input_zip)
