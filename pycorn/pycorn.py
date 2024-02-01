@@ -307,6 +307,17 @@ class PcUni6(OrderedDict):
         self.inject_vol = 0.0
         self.run_name = 'blank'
 
+    def load_all_xml_from_zip(self):
+        self.load(show=False)
+        parse_keys = []
+        for key in fdata:
+            if ".Xml" in key:
+                parse_keys.append(key)
+        for key in parse_keys:
+            self.xml_parse(key, show=False)
+        self.clean_up()
+        return fdata
+
     def load(self, show=False):
         """
         zip-files inside the zip-bundle are replaced by dicts, again with dicts with filename:content
