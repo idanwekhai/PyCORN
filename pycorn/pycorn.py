@@ -10,12 +10,30 @@ import io
 import os
 import struct
 import traceback
-from xml.etree import ElementTree
 from collections import OrderedDict
+from xml.etree import ElementTree
 from zipfile import ZipFile
 from zipfile import is_zipfile
 
 import xmltodict
+
+
+def return_on_failure(errors=(Exception,), default_value=None):
+    def decorator(f):
+        def applicator(*args, **kwargs):
+            try:
+                return f(*args, **kwargs)
+            except errors as e:
+                print(f'Error {e} on {args, kwargs}')
+                traceback.print_exc()
+                return default_value
+
+        return applicator
+
+    return decorator
+
+
+try_except_wrapper = return_on_failure(errors=(Exception,), default_value=None)
 
 
 class PcRes3(OrderedDict):
@@ -263,7 +281,7 @@ class PcRes3(OrderedDict):
             for x, y in enumerate(self.injection_points):
                 print(" {0} \t {1}".format(x, y))
 
-    def load(self, show=False):
+    def load(self, print_log=False):
         """
         extract all data and store in list
         """
@@ -276,7 +294,7 @@ class PcRes3(OrderedDict):
             print("\n WARNING - Injection point does not exist! Selected default.\n")
             self.inject_vol = self.injection_points[-1]
         for name, dat in list(self.items()):
-            dat = self.dataextractor(dat, show=show)
+            dat = self.dataextractor(dat, show=print_log)
             if dat is not None:
                 self[name] = dat
             else:
@@ -289,29 +307,32 @@ class PcUni6(OrderedDict):
     A subclass of `dict`, with the form `data_name`: `data`.
     """
     # for manual zip-detection
-    zip_magic_start = b'\x50\x4B\x03\x04\x2D\x00\x00\x00\x08'
-    zip_magic_end = b'\x50\x4B\x05\x06\x00\x00\x00\x00'
+    _zip_magic_start = b'\x50\x4B\x03\x04\x2D\x00\x00\x00\x08'
+    _zip_magic_end = b'\x50\x4B\x05\x06\x00\x00\x00\x00'
 
     # hack to get pycorn-bin to move on
-    SensData_id = 0
-    SensData_id2 = 0
-    Fractions_id = 0
-    Fractions_id2 = 0
+    _sens_data_id = 0
+    _sens_data_id2 = 0
+    _fractions_id = 0
+    _fractions_id2 = 0
 
     def __init__(self, inp_file):
         OrderedDict.__init__(self)
         self.file_name = inp_file
-        self.inject_vol = 0.0
-        self.run_name = 'blank'
+        self._inject_vol = 0.0
+        self._run_name = 'blank'
         self._date = None
         self._loaded = False
 
     def load_all_xml(self):
+        """
+        Load all data stored as xml in the res file.
+        """
         if self._loaded is False:
-            self.load(show=False)
+            self.load(print_log=False)
         xml_keys_to_be_parsed = [key for key in self.keys() if (".Xml" in key and "dict" not in key)]
         for key in xml_keys_to_be_parsed:
-            self.xml_parse(key, show=False)
+            self._xml_parse(key, print_log=False)
         self.clean_up()
 
     @property
@@ -323,7 +344,7 @@ class PcUni6(OrderedDict):
 
         return self._date
 
-    def load(self, show=False):
+    def load(self, print_log=False):
         """
         zip-files inside the zip-bundle are replaced by dicts, again with dicts with filename:content
         Chrom.#_#_True (=zip-files) files are unpacked from binary to floats by unpacker()
@@ -336,37 +357,34 @@ class PcUni6(OrderedDict):
         self._loaded = True
         with open(self.file_name, 'rb') as f:
             input_zip = ZipFile(f)
-            zip_data = self.zip2dict(input_zip)
+            zip_data = self._zip2dict(input_zip)
             self.update(zip_data)
-            proc_yes = []
-            proc_no = []
-            for key in self.keys():
+            supported_keys = []
+            unsupported_keys = []
+            for key in zip_data.keys():
                 tmp_raw = io.BytesIO(input_zip.read(key))
-                f_header = tmp_raw.read(9)
-                # tmp_raw.seek(0)
-                # the following if block is to fix the non-standard zip files
-                # by stripping out all the null-bytes at the end
-                # see https://bugs.python.org/issue24621
-                if f_header == self.zip_magic_start:
-                    proper_zip = tmp_raw.getvalue()
-                    f_end = proper_zip.rindex(self.zip_magic_end) + 22
-                    tmp_raw = io.BytesIO(proper_zip[0:f_end])
-                if is_zipfile(tmp_raw):
-                    tmp_zip = ZipFile(tmp_raw)
-                    x = {key: self.zip2dict(tmp_zip)}
-                    self.update(x)
-                    proc_yes.append(key)
-                else:
-                    proc_no.append(key)
-            if show:
+
+                tmp_raw = self._strip_nonstandard_zeros(tmp_raw)
+
+                if not is_zipfile(tmp_raw):
+                    unsupported_keys.append(key)
+                    continue
+
+                x = {key: self._zip2dict(ZipFile(tmp_raw))}
+
+                self.update(x)
+
+                supported_keys.append(key)
+
+            if print_log:
                 print("Loaded " + self.file_name + " into memory")
                 print("\n-Supported-")
-                for key in proc_yes:
+                for key in supported_keys:
                     print(" " + key)
                 print("\n-Not supported-")
-                for key in proc_no:
+                for key in unsupported_keys:
                     print(" " + key)
-        # filter out data we dont deal with atm
+        # filter out data we can not handle
         keys_with_array_data = []
         keys_with_xml_data = []
         for key in self.keys():
@@ -374,39 +392,75 @@ class PcUni6(OrderedDict):
                 keys_with_array_data.append(key)
             else:
                 keys_with_xml_data.append(key)
-        if show:
+        if print_log:
             print("\nFiles to process:")
             for key in keys_with_array_data:
                 print(" " + key)
-        unprocessed_keys = list(self.keys())
-        for key in unprocessed_keys:
-            value = self[key]
-            try:
-                if "Xml" in key:
-                    self[key + "_dict"] = self.unpack_xml(value, end_index=len(value))
-                elif type(value) == dict:
-                    for sub_key, sub_value in value.items():
-                        if "DataType" in sub_key:
-                            # value contains the DataType, so decode from bytes to string and remove the \r\n
-                            processed_sub_value = sub_value.decode('utf-8').strip("\r\n")
-                        elif "True" in key and "Xml" not in key:
-                            processed_sub_value = self.unpacker(sub_value)
-                        else:
-                            if len(sub_value) <= 24:
-                                processed_sub_value = None
-                            else:
-                                processed_sub_value = self.unpack_xml(sub_value)
-                        tmp_dict = {sub_key: processed_sub_value}
-                        self[key].update(tmp_dict)
-            except Exception:
-                print(f"Error in {key}:")
-                traceback.print_exc()
 
-        if show:
+        self_keys = list(self.keys())
+        for key in self_keys:
+            data_entry = self[key]
+            if "Xml" in key:
+                self[key + "_dict"] = self._unpack_xml(data_entry, end_index=len(data_entry))
+            elif type(data_entry) is dict:
+                self[key] = self._unpack_dict_data(data_entry, key)
+            else:
+                pass
+
+        if print_log:
             print("Finished decoding x/y-data!")
 
+    def clean_up(self):
+        """
+        deletes everything and just keeps relevant run-data
+        resulting dict is more like res3
+        """
+        manifest = ElementTree.fromstring(self['Manifest.xml'])
+        for i in range(len(manifest)):
+            file_name = manifest[i][0].text
+            self.pop(file_name)
+        self.pop('Manifest.xml')
+
+    @try_except_wrapper
+    def _unpack_dict_data(self, data_entry, key):
+        for sub_key, sub_value in data_entry.items():
+            if "DataType" in sub_key:
+                # value contains the DataType, so decode from bytes to string and remove the \r\n
+                processed_sub_value = sub_value.decode('utf-8').strip("\r\n")
+            elif "True" in key and "Xml" not in key:
+                processed_sub_value = self._unpacker(sub_value)
+            else:
+                if len(sub_value) <= 24:
+                    processed_sub_value = None
+                else:
+                    processed_sub_value = self._unpack_xml(sub_value)
+            data_entry[sub_key] = processed_sub_value
+        return data_entry
+
+    def _strip_nonstandard_zeros(self, tmp_raw):
+        """
+        Fix the non-standard zip files by stripping out all the null-bytes at the end
+        # see https://bugs.python.org/issue24621
+
+        Parameters
+        ----------
+        f_header
+        tmp_raw
+
+        Returns
+        -------
+
+        """
+
+        f_header = tmp_raw.read(9)
+        if f_header == self._zip_magic_start:
+            proper_zip = tmp_raw.getvalue()
+            f_end = proper_zip.rindex(self._zip_magic_end) + 22
+            tmp_raw = io.BytesIO(proper_zip[0:f_end])
+        return tmp_raw
+
     @staticmethod
-    def zip2dict(inp):
+    def _zip2dict(inp):
         """
         input = zip object
         outout = dict with filename:file-object pairs
@@ -418,7 +472,7 @@ class PcUni6(OrderedDict):
         return mydict
 
     @staticmethod
-    def unpacker(inp):
+    def _unpacker(inp):
         """
         input = data block
         output = list of values
@@ -428,7 +482,8 @@ class PcUni6(OrderedDict):
         return values
 
     @staticmethod
-    def unpack_xml(inp, start_index=None, end_index=None):
+    @try_except_wrapper
+    def _unpack_xml(inp, start_index=None, end_index=None):
         if start_index is None:
             start_index = inp.find(b"<")
         if end_index is None:
@@ -439,9 +494,14 @@ class PcUni6(OrderedDict):
         xml_dict = xmltodict.parse(input_decoded)
         return xml_dict
 
-    def xml_parse(self, chrom_name, show=False):
+    def _xml_parse(self, chrom_name, print_log=False):
         """
-        parses parts of the Chrom.1.Xml and creates a res3-like dict
+        Parse parts of the Chrom.1.Xml and create a res3-like dict
+        Parameters
+        ----------
+        chrom_name : str, name of the chromatogram to parse
+        print_log : bool, optional
+
         """
         chrom_key = chrom_name.replace(".Xml", "")
         self[chrom_key] = {}
@@ -452,7 +512,7 @@ class PcUni6(OrderedDict):
         # print(tree.attrib)
         event_dict = {}
         for i in range(len(me)):
-            magic_id = self.SensData_id
+            magic_id = self._sens_data_id
             # e_type = me[i].attrib['EventCurveType']
             e_name = me[i].find('Name').text
             if e_name == 'Fraction':
@@ -477,7 +537,7 @@ class PcUni6(OrderedDict):
             d_name = mc[i].find('Name').text
             d_fname = mc[i].find('CurvePoints')[0][1].text
             d_unit = mc[i].find('AmplitudeUnit').text
-            magic_id = self.SensData_id
+            magic_id = self._sens_data_id
             try:
                 x_dat = self[d_fname]['CoordinateData.Volumes']
                 y_dat = self[d_fname]['CoordinateData.Amplitudes']
@@ -492,21 +552,10 @@ class PcUni6(OrderedDict):
                 # don't deal with data that does not make sense atm
                 # orig2.zip contains UV-blocks that are (edited) copies of
                 # original UV-trace but they dont have the volume data
-            if show:
+            if print_log:
                 print("---")
                 print(d_type)
                 print(d_name)
                 print(d_fname)
                 print(d_unit)
         self[chrom_key].update(chrom_dict)
-
-    def clean_up(self):
-        """
-        deletes everything and just keeps relevant run-data
-        resulting dict is more like res3
-        """
-        manifest = ElementTree.fromstring(self['Manifest.xml'])
-        for i in range(len(manifest)):
-            file_name = manifest[i][0].text
-            self.pop(file_name)
-        self.pop('Manifest.xml')

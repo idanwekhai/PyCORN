@@ -8,14 +8,15 @@ v0.18
 '''
 
 import argparse
-from pycorn import pc_res3
-from pycorn import pc_uni6
+
+from pycorn import PcUni6, PcRes3
 
 try:
     from mpl_toolkits.axes_grid1 import host_subplot
     from matplotlib.ticker import AutoMinorLocator
     import mpl_toolkits.axisartist as AA
     import matplotlib.pyplot as plt
+
     plotting = True
 except:
     ImportError
@@ -24,6 +25,7 @@ except:
 
 try:
     import xlsxwriter
+
     xlsx = True
 except:
     ImportError
@@ -33,71 +35,41 @@ except:
 pcscript_version = 0.14
 
 parser = argparse.ArgumentParser(
-    description = "Extract data from UNICORN .res files to .csv/.txt and plot them (matplotlib required)",
-    epilog = "Make it so!")
-parser.add_argument("-c", "--check", 
-                    help = "Perform simple check if file is supported",
-                    action = "store_true")
-parser.add_argument("-n", "--info", 
-                    help = "Display entries in header",
-                    action = "store_true")
-parser.add_argument("-i", "--inject", type = int, default = None, 
-                    help = "Set injection number # as zero retention, use -t to find injection points",
-                    metavar="#")
-parser.add_argument("-r", "--reduce", type = int, default = 1,
-                    help = "Write/Plot only every n sample",
-                    metavar="#")
-parser.add_argument("-t", "--points", 
-                    help = "Display injection points",
-                    action = "store_true")
+    description="Extract data from UNICORN .res files to .csv/.txt and plot them (matplotlib required)",
+    epilog="Make it so!")
+parser.add_argument("-c", "--check", help="Perform simple check if file is supported", action="store_true")
+parser.add_argument("-n", "--info", help="Display entries in header", action="store_true")
+parser.add_argument("-i", "--inject", type=int, default=None,
+                    help="Set injection number # as zero retention, use -t to find injection points", metavar="#")
+parser.add_argument("-r", "--reduce", type=int, default=1, help="Write/Plot only every n sample", metavar="#")
+parser.add_argument("-t", "--points", help="Display injection points", action="store_true")
 
 group0 = parser.add_argument_group('Extracting', 'Options for writing csv/txt files')
-group0.add_argument("-e", "--extract", type=str, choices=['csv','xlsx'],
-                    help = "Write data to csv or xlsx file for supported data blocks")
+group0.add_argument("-e", "--extract", type=str, choices=['csv', 'xlsx'],
+                    help="Write data to csv or xlsx file for supported data blocks")
 
 group1 = parser.add_argument_group('Plotting', 'Options for plotting')
-group1.add_argument("-p", "--plot", 
-                    help = 'Plot curves',
-                    action = "store_true")
-group1.add_argument("--no_fractions", 
-                    help="Disable plotting of fractions",
-                    action = "store_true")
-group1.add_argument("--no_inject", 
-                    help="Disable plotting of inject marker(s)",
-                    action = "store_true")
-group1.add_argument("--no_legend", 
-                    help="Disable legend for plot",
-                    action = "store_true")
-group1.add_argument("--no_title", 
-                    help="Disable title for plot",
-                    action = "store_true")
-group1.add_argument("--xmin", type = float, default=None,
-                    help="Lower bound on the x-axis",
-                    metavar="#")
-group1.add_argument("--xmax", type = float, default=None,
-                    help="Upper bound on the x-axis",
-                    metavar="#")
-group1.add_argument("--par1", type = str, default='Cond',
+group1.add_argument("-p", "--plot", help='Plot curves', action="store_true")
+group1.add_argument("--no_fractions", help="Disable plotting of fractions", action="store_true")
+group1.add_argument("--no_inject", help="Disable plotting of inject marker(s)", action="store_true")
+group1.add_argument("--no_legend", help="Disable legend for plot", action="store_true")
+group1.add_argument("--no_title", help="Disable title for plot", action="store_true")
+group1.add_argument("--xmin", type=float, default=None, help="Lower bound on the x-axis", metavar="#")
+group1.add_argument("--xmax", type=float, default=None, help="Upper bound on the x-axis", metavar="#")
+group1.add_argument("--par1", type=str, default='Cond',
                     help="Data for 2nd y-axis (Default=Cond), to disable 2nd y-axis, use --par1 None")
-group1.add_argument("--par2", type = str, default=None,
-                    help="Data for 3rd y-axis (Default=None)")                 
-group1.add_argument('-f', '--format', type = str,
-                    choices=['svg','svgz','tif','tiff','jpg','jpeg',
-                    'png','ps','eps','raw','rgba','pdf','pgf'],
-                    default = 'pdf',
-                    help = "File format of plot files (default: pdf)")
-group1.add_argument('-d', '--dpi', default=300, type=int, 
-					help="DPI (dots per inch) for raster images (png, jpg, etc.). Default is 300.")
-parser.add_argument("-u", "--user", 
-                    help = "Show stored user name",
-                    action = "store_true")
+group1.add_argument("--par2", type=str, default=None, help="Data for 3rd y-axis (Default=None)")
+group1.add_argument('-f', '--format', type=str,
+                    choices=['svg', 'svgz', 'tif', 'tiff', 'jpg', 'jpeg', 'png', 'ps', 'eps', 'raw', 'rgba', 'pdf',
+                             'pgf'], default='pdf', help="File format of plot files (default: pdf)")
+group1.add_argument('-d', '--dpi', default=300, type=int,
+                    help="DPI (dots per inch) for raster images (png, jpg, etc.). Default is 300.")
+parser.add_argument("-u", "--user", help="Show stored user name", action="store_true")
 parser.add_argument('--version', action='version', version=str(pcscript_version))
-parser.add_argument("inp_res",
-                    help="Input .res file(s)",
-                    nargs='+',
-                    metavar="<file>.res")
-#args.no_inject
+parser.add_argument("inp_res", help="Input .res file(s)", nargs='+', metavar="<file>.res")
+# args.no_inject
 args = parser.parse_args()
+
 
 def mapper(min_val, max_val, perc):
     '''
@@ -175,7 +147,7 @@ def smartscale(inp):
         plot_x_max = args.xmax
     else:
         if frac_data:
-            plot_x_max = frac_data[-1][0] + frac_delta[-1]*2 # recheck
+            plot_x_max = frac_data[-1][0] + frac_delta[-1] * 2  # recheck
         else:
             plot_x_max = uv1_x[-1]
     if plot_x_min > plot_x_max:
@@ -201,7 +173,8 @@ def smartscale(inp):
     plot_y_min, plot_y_max = expander(plot_y_min_tmp, plot_y_max_tmp, 0.085)
     return plot_x_min, plot_x_max, plot_y_min, plot_y_max
 
-def plotterX(inp,fname):
+
+def plotterX(inp, fname):
     plot_x_min, plot_x_max, plot_y_min, plot_y_max = smartscale(inp)
     host = host_subplot(111, axes_class=AA.Axes)
     host.set_xlabel("Elution volume (ml)")
@@ -213,8 +186,8 @@ def plotterX(inp,fname):
             x_dat, y_dat = xy_data(inp[i]['data'])
             print("Plotting: " + inp[i]['data_name'])
             stl = styles[i[:4]]
-            p0, = host.plot(x_dat, y_dat, label=inp[i]['data_name'], color=stl['color'],
-                            ls=stl['ls'], lw=stl['lw'],alpha=stl['alpha'])
+            p0, = host.plot(x_dat, y_dat, label=inp[i]['data_name'], color=stl['color'], ls=stl['ls'], lw=stl['lw'],
+                            alpha=stl['alpha'])
     if args.par1 == 'None':
         args.par1 = None
     if args.par1:
@@ -228,8 +201,8 @@ def plotterX(inp,fname):
             p1_ymin, p1_ymax = expander(min(y_dat_p1), max(y_dat_p1), 0.085)
             par1.set_ylim(p1_ymin, p1_ymax)
             print("Plotting: " + par1_data['data_name'])
-            p1, = par1.plot(x_dat_p1, y_dat_p1, label=par1_data['data_name'], 
-            color=stl['color'], ls=stl['ls'], lw=stl['lw'], alpha=stl['alpha'])
+            p1, = par1.plot(x_dat_p1, y_dat_p1, label=par1_data['data_name'], color=stl['color'], ls=stl['ls'],
+                            lw=stl['lw'], alpha=stl['alpha'])
         except:
             KeyError
             if par1_inp != None:
@@ -240,7 +213,7 @@ def plotterX(inp,fname):
             par2 = host.twinx()
             offset = 60
             new_fixed_axis = par2.get_grid_helper().new_fixed_axis
-            par2.axis["right"] = new_fixed_axis(loc="right", axes=par2, offset=(offset, 0))  
+            par2.axis["right"] = new_fixed_axis(loc="right", axes=par2, offset=(offset, 0))
             par2.axis["right"].toggle(all=True)
             par2_data = inp[par2_inp]
             stl = styles[par2_inp[:4]]
@@ -249,8 +222,8 @@ def plotterX(inp,fname):
             p2_ymin, p2_ymax = expander(min(y_dat_p2), max(y_dat_p2), 0.075)
             par2.set_ylim(p2_ymin, p2_ymax)
             print("Plotting: " + par2_data['data_name'])
-            p2, = par2.plot(x_dat_p2, y_dat_p2, label=par2_data['data_name'], 
-            color=stl['color'],ls=stl['ls'], lw=stl['lw'], alpha=stl['alpha'])
+            p2, = par2.plot(x_dat_p2, y_dat_p2, label=par2_data['data_name'], color=stl['color'], ls=stl['ls'],
+                            lw=stl['lw'], alpha=stl['alpha'])
         except:
             KeyError
             if par2_inp != None:
@@ -265,13 +238,13 @@ def plotterX(inp,fname):
             for i in frac_data:
                 host.axvline(x=i[0], ymin=0.065, ymax=0.0, color='r', linewidth=0.85)
                 host.annotate(str(i[1]), xy=(i[0] + frac_delta[frac_data.index(i)] * 0.55, frac_y_pos),
-                         horizontalalignment='center', verticalalignment='bottom', size=8, rotation=90)
+                              horizontalalignment='center', verticalalignment='bottom', size=8, rotation=90)
         except:
             KeyError
-    if inp.inject_vol != 0.0:
+    if inp._inject_vol != 0.0:
         injections = inp.injection_points
-        host.axvline(x=0, ymin=0.10, ymax=0.0, color='#FF3292',
-                     ls ='-', marker='v', markevery=2, linewidth=1.5, alpha=0.85, label='Inject')
+        host.axvline(x=0, ymin=0.10, ymax=0.0, color='#FF3292', ls='-', marker='v', markevery=2, linewidth=1.5,
+                     alpha=0.85, label='Inject')
     host.set_xlim(plot_x_min, plot_x_max)
     if not args.no_legend:
         host.legend(fontsize=8, fancybox=True, labelspacing=0.4, loc='upper right', numpoints=1)
@@ -279,10 +252,11 @@ def plotterX(inp,fname):
     host.yaxis.set_minor_locator(AutoMinorLocator())
     if not args.no_title:
         plt.title(fname, loc='left', size=9)
-    plot_file = fname[:-4] + "_" + inp.run_name + "_plot." + args.format
+    plot_file = fname[:-4] + "_" + inp._run_name + "_plot." + args.format
     plt.savefig(plot_file, bbox_inches='tight', dpi=args.dpi)
     print("Plot saved to: " + plot_file)
     plt.clf()
+
 
 def data_writer1(fname, inp):
     '''
@@ -290,7 +264,7 @@ def data_writer1(fname, inp):
     '''
     for i in inp.keys():
         print("Writing: " + inp[i]['data_name'])
-        outfile_base = fname[:-4] + "_" + inp.run_name + "_" + inp[i]['data_name']
+        outfile_base = fname[:-4] + "_" + inp._run_name + "_" + inp[i]['data_name']
         type = inp[i]['data_type']
         if type == 'meta':
             data = inp[i]['data']
@@ -300,24 +274,25 @@ def data_writer1(fname, inp):
             with open(outfile_base + ext, 'wb') as fout:
                 fout.write(data_to_write)
         else:
-            x_dat,y_dat = xy_data(inp[i]['data'])
+            x_dat, y_dat = xy_data(inp[i]['data'])
             ext = '.csv'
             sep = ','
             with open(outfile_base + ext, 'wb') as fout:
-                for x,y in zip(x_dat,y_dat):
+                for x, y in zip(x_dat, y_dat):
                     dp = str(x) + sep + str(y) + str('\r\n')
                     data_to_write = dp.encode('utf-8')
                     fout.write(data_to_write)
+
 
 def generate_xls(inp, fname):
     '''
     Input = pycorn object
     output = xlsx file
     '''
-    xls_filename = fname[:-4] + "_" + inp.run_name + ".xlsx"
+    xls_filename = fname[:-4] + "_" + inp._run_name + ".xlsx"
     workbook = xlsxwriter.Workbook(xls_filename)
     worksheet = workbook.add_worksheet()
-    writable_blocks = [inp.Fractions_id, inp.Fractions_id2, inp.SensData_id, inp.SensData_id2]
+    writable_blocks = [inp._fractions_id, inp._fractions_id2, inp._sens_data_id, inp._sens_data_id2]
     d_list = []
     for i in inp.keys():
         if inp[i]['magic_id'] in writable_blocks:
@@ -334,29 +309,29 @@ def generate_xls(inp, fname):
         dat.insert(0, header1)
         dat.insert(1, header2)
         row = 0
-        col = d_list.index(i) *2
+        col = d_list.index(i) * 2
         print("Writing: " + i)
         for x_val, y_val in (dat):
             worksheet.write(row, col, x_val)
             worksheet.write(row, col + 1, y_val)
             row += 1
     workbook.close()
-    print("Data written to: " + xls_filename) 
+    print("Data written to: " + xls_filename)
 
-                    
-styles = {'UV':{'color': '#1919FF', 'lw': 1.6, 'ls': "-", 'alpha':1.0},
-'UV1_':{'color': '#1919FF', 'lw': 1.6, 'ls': "-", 'alpha':1.0},
-'UV2_':{'color': '#e51616', 'lw': 1.4, 'ls': "-", 'alpha':1.0},
-'UV3_':{'color': '#c73de6', 'lw': 1.2, 'ls': "-", 'alpha':1.0},
-'UV 1':{'color': '#1919FF', 'lw': 1.6, 'ls': "-", 'alpha':1.0},
-'UV 2':{'color': '#e51616', 'lw': 1.4, 'ls': "-", 'alpha':1.0},
-'UV 3':{'color': '#c73de6', 'lw': 1.2, 'ls': "-", 'alpha':1.0},
-'Cond':{'color': '#FF7C29', 'lw': 1.4, 'ls': "-", 'alpha':0.75},
-'Conc':{'color': '#0F990F', 'lw': 1.0, 'ls': "-", 'alpha':0.75},
-'Pres':{'color': '#C0CBBA', 'lw': 1.0, 'ls': "-", 'alpha':0.50},
-'Temp':{'color': '#b29375', 'lw': 1.0, 'ls': "-", 'alpha':0.75},
-'Inje':{'color': '#d56d9d', 'lw': 1.0, 'ls': "-", 'alpha':0.75},
-'pH':{'color': '#0C7F7F', 'lw': 1.0, 'ls': "-", 'alpha':0.75},}
+
+styles = {'UV': {'color': '#1919FF', 'lw': 1.6, 'ls': "-", 'alpha': 1.0},
+          'UV1_': {'color': '#1919FF', 'lw': 1.6, 'ls': "-", 'alpha': 1.0},
+          'UV2_': {'color': '#e51616', 'lw': 1.4, 'ls': "-", 'alpha': 1.0},
+          'UV3_': {'color': '#c73de6', 'lw': 1.2, 'ls': "-", 'alpha': 1.0},
+          'UV 1': {'color': '#1919FF', 'lw': 1.6, 'ls': "-", 'alpha': 1.0},
+          'UV 2': {'color': '#e51616', 'lw': 1.4, 'ls': "-", 'alpha': 1.0},
+          'UV 3': {'color': '#c73de6', 'lw': 1.2, 'ls': "-", 'alpha': 1.0},
+          'Cond': {'color': '#FF7C29', 'lw': 1.4, 'ls': "-", 'alpha': 0.75},
+          'Conc': {'color': '#0F990F', 'lw': 1.0, 'ls': "-", 'alpha': 0.75},
+          'Pres': {'color': '#C0CBBA', 'lw': 1.0, 'ls': "-", 'alpha': 0.50},
+          'Temp': {'color': '#b29375', 'lw': 1.0, 'ls': "-", 'alpha': 0.75},
+          'Inje': {'color': '#d56d9d', 'lw': 1.0, 'ls': "-", 'alpha': 0.75},
+          'pH': {'color': '#0C7F7F', 'lw': 1.0, 'ls': "-", 'alpha': 0.75}, }
 
 
 def main2():
@@ -364,12 +339,12 @@ def main2():
         if args.inject == None:
             args.inject = -1
         if (fname[-3:]).lower() == "zip":
-            fdata = pc_uni6(fname)
+            fdata = PcUni6(fname)
             fdata.load()
-            fdata.xml_parse()
+            fdata.load_all_xml()
             fdata.clean_up()
         if (fname[-3:]).lower() == "res":
-            fdata = pc_res3(fname, reduce = args.reduce, inj_sel=args.inject)
+            fdata = PcRes3(fname, reduce=args.reduce, inj_sel=args.inject)
             fdata.load()
         if args.extract == 'csv':
             data_writer1(fname, fdata)
@@ -386,5 +361,6 @@ def main2():
             print("User: " + user)
         if args.plot and plotting:
             plotterX(fdata, fname)
+
 
 main2()

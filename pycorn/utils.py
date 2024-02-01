@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from pycorn import PcUni6
 
@@ -51,13 +51,13 @@ def import_xml_as_df(file_path: (str | Path), data_key_list: list = None, index:
     data_dictionary = PcUni6(file_path)
     data_dictionary.load_all_xml()
 
-    target_key_list = [key for key in data_dictionary if
-                       any(s.lower() in key.lower() for
-                           s in ["Tracer", "Injection", "Chrom", "Breakthrough", "Elution"])
-                       and "events" not in key
-                       and any(["UV" in sub_key for sub_key in data_dictionary[key]])
-                       and any(["Cond" in sub_key for sub_key in data_dictionary[key]])
-                       ]
+    target_key_list = [
+        key for key in data_dictionary
+        if "events" not in key
+           and "Cond" in key
+           and any(s.lower() in key.lower() for s in ["Tracer", "Injection", "Chrom", "Breakthrough", "Elution"])
+           and any(["UV" in sub_key for sub_key in data_dictionary[key]])
+    ]
 
     if any("breakthrough" in key.lower() for key in target_key_list):
         target_key_list = [key for key in target_key_list if "breakthrough" in key.lower()]
