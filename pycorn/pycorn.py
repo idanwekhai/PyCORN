@@ -323,6 +323,7 @@ class PcUni6(OrderedDict):
         self._run_name = 'blank'
         self._date = None
         self._loaded = False
+        self.chrom_id = None
 
     def load_all_xml(self):
         """
@@ -508,6 +509,10 @@ class PcUni6(OrderedDict):
         tree = ElementTree.fromstring(self[chrom_name])
         mc = tree.find('Curves')
         me = tree.find('EventCurves')
+        id = tree.find('ChromatogramID').text
+
+        col_vol = me[2][10].text
+        # print(id)
         # print(tree.tag)
         # print(tree.attrib)
         event_dict = {}
@@ -528,7 +533,7 @@ class PcUni6(OrderedDict):
                 print("not added - not orig data")
             if e_orig == "true":
                 # print("added - orig data")
-                x = {'run_name': chrom_name, 'data': e_data, 'data_name': e_name, 'magic_id': magic_id}
+                x = {'run_name': chrom_name, 'data': e_data, 'data_name': e_name, 'magic_id': magic_id, 'chrom_id': id, 'column_vol': col_vol}
                 event_dict.update({e_name: x})
         self[chrom_key].update(event_dict)
         chrom_dict = {}
@@ -539,13 +544,22 @@ class PcUni6(OrderedDict):
             d_unit = mc[i].find('AmplitudeUnit').text
             magic_id = self._sens_data_id
             try:
+
                 x_dat = self[d_fname]['CoordinateData.Volumes']
                 y_dat = self[d_fname]['CoordinateData.Amplitudes']
+                # if d_name == "Injection":
+                #     print(x_dat, 12)
+                #     x_dat.append(id)
+                #     print(d_name)
+                #     print(x_dat, 12)
+                #     y_dat.append("ChromID")
+                # print(type(x_dat))
                 zdata = list(zip(x_dat, y_dat))
                 if d_name == "UV cell path length":
                     d_name = "xUV cell path length"  # hack to prevent pycorn-bin from picking this up
+
                 x = {'run_name': chrom_name, 'data': zdata, 'unit': d_unit, 'data_name': d_name, 'data_type': d_type,
-                     'magic_id': magic_id}
+                     'magic_id': magic_id, 'chrom_id': id, 'column_vol': col_vol}
                 chrom_dict.update({d_name: x})
             except KeyError as e:
                 print("not parsing", e)
@@ -558,4 +572,5 @@ class PcUni6(OrderedDict):
                 print(d_name)
                 print(d_fname)
                 print(d_unit)
+        # chrom_dict.update({'ChromatogramID': id})
         self[chrom_key].update(chrom_dict)
